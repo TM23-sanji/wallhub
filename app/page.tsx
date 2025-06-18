@@ -1,103 +1,185 @@
-import Image from "next/image";
+"use client"; // This component must be a client component
 
-export default function Home() {
+import React, { useState, useEffect } from "react";
+import Header from "@/components/header";
+import ImageGallery from "@/components/image-gallery";
+import UploadModal from "@/components/upload-modal";
+import { toast } from "sonner";
+import { upload } from "@imagekit/next";
+import { Loader } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Progress } from "@/components/ui/progress";
+import Sidebar from "@/components/Sidebar";
+import { ImageType } from "@/lib/types";
+
+const Index = () => {
+  const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = React.useState(13);
+  const [images, setImages] = useState<ImageType[]>([]);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [showContent, setShowContent] = useState(false);
+
+  const fetchFiles = async () => {
+    try {
+      setLoading(true);
+      console.log(1);
+      const resImage = await fetch("/api/images");
+      console.log(2);
+      
+      if (!resImage.ok) {
+        const errData = await resImage.json();
+        console.error("Server error:", errData.error);
+        toast.error(errData.error || "Unknown error");
+        return;
+      }
+
+      const imageData: ImageType[] = await resImage.json();
+      setImages(imageData);
+      console.log(imageData)
+    } catch (err) {
+      console.error("Failed to load images", err);
+      toast.error("Failed to load images");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFiles();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        const next = prev + 5;
+        if (next >= 100) {
+          clearInterval(interval);
+          setTimeout(() => setShowContent(true), 100); // Slight delay to trigger animation
+          return 100;
+        }
+        return next;
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleUploadClick = () => {
+    setIsUploadModalOpen(true);
+  };
+
+  const handleUpload = async (file: File) => {
+    try {
+      const res = await fetch("/api/upload-auth");
+      const { token, expire, signature, publicKey } = await res.json();
+      const isImage = file.type.startsWith("image/");
+      if (isImage) {
+        const uploadResponse = await upload({
+          file,
+          fileName: file.name,
+          token,
+          publicKey,
+          signature,
+          expire,
+          folder: `uploads/image`,
+          useUniqueFileName: true,
+        });
+
+        const uploadedFile = {
+          src: uploadResponse.url || URL.createObjectURL(file),
+          alt: isImage ? uploadResponse.name : file.name,
+          fileId: uploadResponse.fileId!,
+          fileWidth: uploadResponse.width!,
+          fileHeight: uploadResponse.height!,
+        };
+
+        await fetch("/api/images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: uploadedFile.src,
+            fileId: uploadedFile.fileId,
+            fileWidth: uploadedFile.fileWidth,
+            fileHeight: uploadedFile.fileHeight,
+            alt: uploadedFile.alt,
+          }),
+        });
+
+        setImages([
+          { ...uploadedFile, alt: file.name } as ImageType,
+          ...images,
+        ]);
+        toast.success("Image uploaded successfully");
+      } else {
+        toast.error("Image Only");
+      }
+    } catch (error) {
+      console.error("Upload failed", error);
+      toast.error("Upload failed");
+    }
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-gray-50 relative">
+      {/* Progress Screen */}
+      <div
+        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-700 ease-in ${
+          showContent ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
+      >
+        <div className="w-1/2 max-w-md space-y-4">
+          <p className="text-center text-gray-500">Loading app...</p>
+          <Progress value={progress} className="h-4" />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+
+      <div
+        className={`transition-opacity duration-700 ease-in ${
+          showContent ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        <Header onUploadClick={handleUploadClick} />
+
+        <main className="flex-1 flex flex-col">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center text-gray-500 h-64">
+              <Loader className="animate-spin w-6 h-6 mb-2" />
+              <p>Loading...</p>
+            </div>
+          ) : images.length > 0 ? (
+            <div className="flex ">
+              <ScrollArea className="h-[calc(100vh-80px)]">
+                <Sidebar />
+              </ScrollArea>
+
+              <ScrollArea className="h-[calc(100vh-80px)] w-full pr-1 pb-6 ">
+                <ImageGallery
+                  images={images}
+                  setImages={setImages}
+                  fetchFiles={fetchFiles}
+                />
+              </ScrollArea>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center text-gray-500 h-64">
+              <p className="font-semibold">Nothing to show here yet.</p>
+              <button
+                onClick={handleUploadClick}
+                className="mt-2 text-blue-500 hover:underline"
+              >
+                Upload your first image
+              </button>
+            </div>
+          )}
+        </main>
+        <UploadModal
+          isOpen={isUploadModalOpen}
+          onClose={() => setIsUploadModalOpen(false)}
+          onUpload={handleUpload}
+        />
+      </div>
     </div>
   );
-}
+};
+
+export default Index;
