@@ -22,9 +22,7 @@ const Index = () => {
   const fetchFiles = async () => {
     try {
       setLoading(true);
-      console.log(1);
       const resImage = await fetch("/api/images");
-      console.log(2);
       
       if (!resImage.ok) {
         const errData = await resImage.json();
@@ -35,7 +33,6 @@ const Index = () => {
 
       const imageData: ImageType[] = await resImage.json();
       setImages(imageData);
-      console.log(imageData)
     } catch (err) {
       console.error("Failed to load images", err);
       toast.error("Failed to load images");
